@@ -23,32 +23,48 @@ case "${1}" in
 	initialize)
 		if usesipnetns
 		then
-			_HIP=_IP
+			_HIP="$_IP"
 			_IP="$_HIP netns exec ${2} $_HIP"
 			$_HIP netns add ${2}
 		 	$_IP link set dev lo up
 		fi
 		;;
 	prepre-start)
-		$_HIP link add link eth0 name fw-vlan2 type vlan id 2
-		$_HIP link set dev fw-vlan2 address $(createMacVidId 2 0)
-		$_HIP link set dev fw-vlan2 netns ${2}
+		if usesipnetns
+		then
+			$_HIP link add link eth0 name fw-vlan2 type vlan id 2
+			$_HIP link set dev fw-vlan2 address $(createMacVidId 2 0)
+			$_HIP link set dev fw-vlan2 netns ${2}
+		fi
 		;;
 	# By now all options are generated, time to override them
 	pre-start)
 		# NICE_CMD=(/sbin/ip netns exec ${2} "${NICE_CMD[@]}")
-# 		local myOptions
-# 		local NEWVSPACE_OPTS
-# 		for myOptions in "${OPTS_VSPACE}"
-# 		do
-# 			# Already created, skip it
-# 			[ "${myOptions}" = "--net" ] && continue
-# 			NEWVSPACE_OPTS=("${NEWVSPACE_OPTS[@]}" "$myOptions")
-# 		done
-# 		OPTS_VSPACE=("${NEWVSPACE_OPTS[@]}" -- "/root/vservers/my_vspace" "${2}")
-# 		unset NEWVSPACE_OPTS
-# 		unset myOptions
-		OPTS_VCONTEXT_CREATE=("${OPTS_VCONTEXT_CREATE[@]}" -- "/root/vservers/my_vspace" "${2}")
+		if usesipnetns
+		then
+			local index
+			local NEWVSPACE_CMDS
+			declare -a NEWVSPACE_CMDS
+			index=0;
+			while [ $index -lt ${#VSPACE_SHARED_CMDS[@]} ]
+			do
+				if
+					[ "$VSPACE_SHARED_CMDS[$(($index+0))]" = "$_VSPACE" ] &&
+					[ "$VSPACE_SHARED_CMDS[$(($index+1))]" = "--enter" ] &&
+					[ "$VSPACE_SHARED_CMDS[$(($index+2))]" = "${2}" ] &&
+					[ "$VSPACE_SHARED_CMDS[$(($index+3))]" = "--net" ]
+				then
+					NEWSPACE_CMDS=("${NEWSPACE_CMDS[@]}" $_HIP netns exec "$2")		
+					index=$(($index+5))
+				else
+					NEWSPACE_CMDS=("${NEWSPACE_CMDS[@]}" "${VSPACE_SHARED_CMDS[$index]}")
+					index=$(($index+1))
+				fi
+			done
+			VSPACE_SHARED_CMDS=("${NEWSPACE_CMDS[@]}")
+			unset NEWVSPACE_CMDS
+			unset index
+		fi
 		;;
         post-start)
 		;;
