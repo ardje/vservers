@@ -1,0 +1,33 @@
+#!/bin/bash -x
+#echo ===
+#echo $@
+#echo ===
+#case "$1" in
+#	--new)
+#		shift
+#		for i in "$@"
+#		do
+#			 case "$i" in
+#				--net)
+#					;;
+#				*)
+#					OPTS[${#OPTS}]="$i"
+#					;;
+#			esac
+#		done
+#		exec /sbin/ip netns exec ${VSERVER_NAME} /usr/sbin/vspace --new "${OPTS[@]}"
+#
+#		shift;shift;shift
+#		exec /sbin/ip netns exec fw /usr/sbin/vspace --new --default "$@"
+#		shift;shift;shift;shift
+#		exec /usr/sbin/vspace --new --default -- /sbin/ip netns exec fw "$@"
+#		;;
+#	*)
+#		exec /usr/sbin/vspace "$@"
+#	;;
+#esac
+VSERVER="$1"
+shift
+shift
+exec /sbin/ip netns exec "$VSERVER" "$@"
+
