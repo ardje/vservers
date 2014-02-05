@@ -1,11 +1,13 @@
 # Override util-vserver settings
-set -x
+#set -x
 function createMacVidId() {
+	local S_CONTEXT
+	read S_CONTEXT < /etc/vservers/${1}/context
 	(
 		printf "02"
-		printf "%04x" $1 # I usually use VID
+		printf "%04x" $2 # I usually use VID
 		printf "%04x" $S_CONTEXT
-		printf "%02x" $2 # IFACE number f.i.
+		printf "%02x" $3 # IFACE number f.i.
 	)|
         sed 's/\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)/\1:\2:\3:\4:\5:\6/'
 }
@@ -32,9 +34,9 @@ case "${1}" in
 	prepre-start)
 		if usesipnetns
 		then
-			$_HIP link add link eth0 name fw-vlan2 type vlan id 2
-			$_HIP link set dev fw-vlan2 address $(createMacVidId 2 0)
-			$_HIP link set dev fw-vlan2 netns ${2}
+			$_HIP link add link vlan1 name if-${2} type macvlan mode bridge
+			$_HIP link set dev if-${2} address $(createMacVidId $2 2 0)
+			$_HIP link set dev if-${2} netns ${2}
 		fi
 		;;
 	# By now all options are generated, time to override them
@@ -46,39 +48,46 @@ case "${1}" in
 			local NEWVSPACE_CMDS
 			declare -a NEWVSPACE_CMDS
 			index=0;
-			while [ $index -lt ${#VSPACE_SHARED_CMDS[@]} ]
+			while [ $index -lt ${#VSPACE_SHARED_CMD[@]} ]
 			do
 				if
-					[ "$VSPACE_SHARED_CMDS[$(($index+0))]" = "$_VSPACE" ] &&
-					[ "$VSPACE_SHARED_CMDS[$(($index+1))]" = "--enter" ] &&
-					[ "$VSPACE_SHARED_CMDS[$(($index+2))]" = "${2}" ] &&
-					[ "$VSPACE_SHARED_CMDS[$(($index+3))]" = "--net" ]
+					[ "${VSPACE_SHARED_CMD[$((${index}+0))]}" = "$_VSPACE" ] &&
+					[ "${VSPACE_SHARED_CMD[$((${index}+1))]}" = "--enter" ] &&
+					[ "${VSPACE_SHARED_CMD[$((${index}+2))]}" = "${2}" ] &&
+					[ "${VSPACE_SHARED_CMD[$((${index}+3))]}" = "--net" ]
 				then
 					NEWSPACE_CMDS=("${NEWSPACE_CMDS[@]}" $_HIP netns exec "$2")		
 					index=$(($index+5))
 				else
-					NEWSPACE_CMDS=("${NEWSPACE_CMDS[@]}" "${VSPACE_SHARED_CMDS[$index]}")
+					NEWSPACE_CMDS=("${NEWSPACE_CMDS[@]}" "${VSPACE_SHARED_CMD[$index]}")
 					index=$(($index+1))
 				fi
 			done
-			VSPACE_SHARED_CMDS=("${NEWSPACE_CMDS[@]}")
+			VSPACE_SHARED_CMD=("${NEWSPACE_CMDS[@]}")
 			unset NEWVSPACE_CMDS
 			unset index
+			ip netns exec ${2} /usr/lib/util-vserver/vprocunhide
 		fi
 		;;
         post-start)
+		if usesipnetns
+		then
+			$_IP route add default via 192.168.0.25
+			ip netns exec ${2} /usr/lib/util-vserver/vprocunhide
+		fi
 		;;
 	pre-stop)
 		if usesipnetns
 		then
-			_HIP=_IP
+			_HIP="$_IP"
 			_IP="$_HIP netns exec ${2} $_HIP"
-			$_HIP netns add ${2}
-		 	$_IP link set dev lo up
 		fi
 		;;
 	post-stop)
-		$_IP link del fw-vlan2
-		$_HIP netns delete ${2}
+		if usesipnetns
+		then
+			$_IP link del if-${2}
+			$_HIP netns delete ${2}
+		fi
 		;;
 esac
